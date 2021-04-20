@@ -35,7 +35,7 @@ public:
     ponos::Path path(SRC_PATH);
     d_src = ponos::FileSystem::readFile(path + "brdf/d_ggx.frag");
     f_src = ponos::FileSystem::readFile(path + "brdf/f_schlick.frag");
-    g_src = ponos::FileSystem::readFile(path + "brdf/g_smith.frag");
+    g_src = ponos::FileSystem::readFile(path + "brdf/g_smith_schlick_beckmann.frag");
     setupModel();
     buildShader();
   }
@@ -131,13 +131,33 @@ public:
     ImGui::SliderFloat("ao", &ao, 0.0, 1.0);
     ImGui::Separator();
     ImGui::Text("NDF");
-    static int option = 0;
-    int old_option = option;
-    if (ImGui::Combo("NDF", (int *) &option,
-                     "GGX\0Blinn-Phong\0CUSTOM\0")
-        && option != old_option)
-      loadSource(0, option);
-    ImGui::Text("Fresnel");
+    static int ndf_option = 0;
+    int old_option = ndf_option;
+    if (ImGui::Combo("NDF", (int *) &ndf_option,
+                     "GGX\0Blinn-Phong\0Beckmann\0CUSTOM\0")
+        && ndf_option != old_option)
+      loadSource(0, ndf_option);
+    static int g_option = 0;
+    old_option = g_option;
+    if (ImGui::Combo("G", (int *) &g_option,
+                     "Smith Schlick Beckmann\0"
+                     "Cook-Torrance\0"
+                     "Smith GGX\0"
+                     "Neumann\0"
+                     "Implicit\0"
+                     "Kelemen\0"
+                     "CUSTOM\0")
+        && g_option != old_option)
+      loadSource(1, g_option);
+    static int f_option = 0;
+    old_option = f_option;
+    if (ImGui::Combo("F", (int *) &f_option,
+                     "None\0"
+                     "Schlick\0"
+                     "Cook Torrance\0"
+                     "CUSTOM\0")
+        && g_option != old_option)
+      loadSource(2, f_option);
 
     ImGui::SliderFloat("F0", &f0, 0.0, 1.0);
     ImGui::End();
@@ -147,11 +167,31 @@ public:
     ponos::Path path(SRC_PATH);
     static std::vector<std::string> ndfs = {
         "brdf/d_ggx.frag",
-        "brdf/d_blinn_phong.frag"
+        "brdf/d_blinn_phong.frag",
+        "brdf/d_beckmann.frag",
+    };
+    static std::vector<std::string> gs = {
+        "brdf/g_smith_schlick_beckmann.frag",
+        "brdf/g_cook_torrance.frag",
+        "brdf/g_smith_ggx.frag",
+        "brdf/g_neumann.frag",
+        "brdf/g_implicit.frag",
+        "brdf/g_kelemen.frag",
+    };
+    static std::vector<std::string> fs = {
+        "brdf/f_none.frag",
+        "brdf/f_schlick.frag",
+        "brdf/f_cook_torrance.frag",
     };
     if (f == 0) {
       if (i < ndfs.size())
         d_src = ponos::FileSystem::readFile(path + ndfs[i]);
+    } else if (f == 1) {
+      if (i < gs.size())
+        g_src = ponos::FileSystem::readFile(path + gs[i]);
+    } else {
+      if (i < fs.size())
+        f_src = ponos::FileSystem::readFile(path + fs[i]);
     }
     buildShader();
   }
