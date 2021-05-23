@@ -14,6 +14,7 @@ Hopefully my cmake configurations will take care of all dependencies.
 
 ## Features
 - select different functions for NDF, Geometric Shadowing and Fresnel terms
+- IBL (view and generate textures for IBL)
 
 ## TODO
 - put some description about the functions
@@ -22,5 +23,7 @@ Hopefully my cmake configurations will take care of all dependencies.
 
 ## Screenshots
 
+![GitHub Logo](screenshot0.png)
+![GitHub Logo](screenshot01.png)
 ![GitHub Logo](screenshot1.png)
 ![GitHub Logo](screenshot2.png)
