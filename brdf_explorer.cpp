@@ -65,6 +65,14 @@ public:
     shader.setUniform("f0", f0);
     shader.setUniform("lightPosition", light_position);
     shader.setUniform("lightColor", light_color);
+    if (use_ibl) {
+      irradiance_map.bind(GL_TEXTURE0);
+      prefilter_map.bind(GL_TEXTURE1);
+      lut.bind(GL_TEXTURE2);
+      shader.setUniform("irradianceMap", 0);
+      shader.setUniform("prefilterMap", 1);
+      shader.setUniform("brdfLUT", 2);
+    }
     model.draw();
     gui();
     // gizmo
@@ -75,6 +83,9 @@ public:
                        1,
                        {1000, 100},
                        {100, 100});
+
+    if (display_enviroment)
+      drawEnviroment(camera);
   }
 
   void setupModel() {
@@ -97,17 +108,89 @@ public:
     if (!light_model.program.link(shaders))
       std::cerr << light_model.program.err << std::endl;
 
+    setupEnviroment();
+  }
+
+  void setupEnviroment() {
+    // enviroment
+    env_model = circe::Shapes::box({{-1, -1, -1}, {1, 1, 1}});
+    std::vector<Shader> shaders;
+    shaders.emplace_back(GL_VERTEX_SHADER, "#version 440 core\n"
+                                           "layout (location = 0) in vec3 aPos;\n"
+                                           "uniform mat4 projection;\n"
+                                           "uniform mat4 view;\n"
+                                           "out vec3 localPos;\n"
+                                           "void main() {\n"
+                                           "    localPos = aPos;\n"
+                                           "    mat4 rotView = mat4(mat3(view)); // remove translation from the view matrix\n"
+                                           "    vec4 clipPos = projection * rotView * vec4(localPos, 1.0);\n"
+                                           "    gl_Position = clipPos.xyww;\n"
+                                           "}");
+    shaders.emplace_back(GL_FRAGMENT_SHADER, "#version 440 core\n"
+                                             "out vec4 FragColor;\n"
+                                             "in vec3 localPos;"
+                                             "in vec3 TexCoords;\n"
+                                             "uniform samplerCube environmentMap;\n"
+                                             "void main(){\n"
+                                             "  vec3 envColor = texture(environmentMap, localPos).rgb;"
+                                             "  envColor = envColor / (envColor + vec3(1.0));\n"
+                                             "  envColor = pow(envColor, vec3(1.0/2.2)); \n"
+                                             "  FragColor = vec4(envColor, 1.0);"
+                                             "}");
+    if (!env_model.program.link(shaders))
+      std::cerr << env_model.program.err << std::endl;
+
+    env_map = circe::gl::Texture::fromFile("/home/filipecn/Desktop/hdr/Ueno-Shrine/03-Ueno-Shrine_3k.hdr",
+                                           circe::texture_options::equirectangular |
+                                               circe::texture_options::hdr,
+                                           circe::texture_options::cubemap);
+    env_map.bind();
+    Texture::View view(GL_TEXTURE_CUBE_MAP);
+    view[GL_TEXTURE_MIN_FILTER] = GL_LINEAR_MIPMAP_LINEAR;
+    view.apply();
+    env_map.generateMipmap();
+    // compute IBL textures
+    irradiance_map = circe::gl::IBL::irradianceMap(env_map, {32, 32});
+    prefilter_map = circe::gl::IBL::preFilteredEnvironmentMap(env_map, {128, 128});
+    lut = circe::gl::IBL::brdfIntegrationMap({512, 512});
+    irradiance_tex = circe::gl::Texture::fromTexture(irradiance_map, circe::texture_options::equirectangular);
+    env_tex = circe::gl::Texture::fromTexture(env_map, circe::texture_options::equirectangular);
+    prefilter_tex = circe::gl::Texture::fromTexture(prefilter_map, circe::texture_options::equirectangular);
+  }
+
+  void drawEnviroment(circe::CameraInterface *camera) {
+    env_map.bind(GL_TEXTURE0);
+    glDepthFunc(GL_LEQUAL);
+    env_model.program.use();
+    auto m = camera->getViewTransform().matrix();
+    m[0][3] = m[1][3] = m[2][3] = 0;
+    env_model.program.setUniform("projection", camera->getProjectionTransform());
+    env_model.program.setUniform("view", camera->getViewTransform());
+    env_model.program.setUniform("environmentMap", 0);
+    env_model.draw();
+    glDepthFunc(GL_LESS);
   }
 
   void buildShader() {
-    ponos::Path path(SRC_PATH);
+    ponos::Path path(SHADER_CODE_PATH);
     ponos::Str frag_src = ponos::FileSystem::readFile(path + "pbr_header.frag");
     // choose BRDFs
     frag_src += d_src;
     frag_src += f_src;
     frag_src += g_src;
     // finish fragment shader
-    frag_src += ponos::FileSystem::readFile(path + "pbr_main.frag");
+    frag_src += "void main(){\n";
+    frag_src += ponos::FileSystem::readFile(path + "main_header.frag");
+    frag_src += "{\n";
+    frag_src += ponos::FileSystem::readFile(path + "light_iteration.frag");
+    frag_src += "}\n";
+    if (use_ibl)
+      frag_src += ponos::FileSystem::readFile(path + "ambient_ibl.frag");
+    else
+      frag_src += ponos::FileSystem::readFile(path + "ambient_light.frag");
+    frag_src += ponos::FileSystem::readFile(path + "main_footer.frag");
+    frag_src += "}\n";
+//    std::cerr << frag_src << std::endl;
 
     if (!vertex_shader.compile(path + "pbr.vert", GL_VERTEX_SHADER))
       std::cerr << vertex_shader.err << std::endl;
@@ -124,6 +207,17 @@ public:
 
   void gui() {
     ImGui::Begin("Controls");
+    ImGui::Text("IBL");
+    if (ImGui::Checkbox("enable", &use_ibl))
+      buildShader();
+    ImGui::SameLine();
+    ImGui::Checkbox("render", &display_enviroment);
+    ImGui::Text("Display");
+    ImGui::Separator();
+    ImGui::Checkbox("BRDF LUT", &view_lut);
+    ImGui::Checkbox("Environment Map", &view_env_map);
+    ImGui::Checkbox("Irradiance Map", &view_irradiance_map);
+    ImGui::Checkbox("Prefilter Map", &view_prefilter_map);
     ImGui::Text("Material");
     ImGui::ColorEdit3("albedo", &albedo[0]);
     ImGui::SliderFloat("roughness", &roughness, 0.0, 1.0);
@@ -160,6 +254,28 @@ public:
       loadSource(2, f_option);
 
     ImGui::SliderFloat("F0", &f0, 0.0, 1.0);
+    ImGui::End();
+
+    if (view_lut)
+      guiTextureView(lut, "BRDF LUT");
+    if (view_irradiance_map)
+      guiTextureView(irradiance_tex, "Irradiance Map");
+    if (view_env_map)
+      guiTextureView(env_tex, "Environment Map");
+    if (view_prefilter_map)
+      guiTextureView(prefilter_tex, "Prefilter Map");
+  }
+
+  static void guiTextureView(const circe::gl::Texture &texture, const std::string &title) {
+    ImGui::Begin(title.c_str());
+    if (texture.target() == GL_TEXTURE_CUBE_MAP)
+      glBindTexture(GL_TEXTURE_CUBE_MAP_POSITIVE_X, texture.textureObjectId());
+    texture.bind(GL_TEXTURE0);
+    auto texture_id = texture.textureObjectId();
+    ImGui::Image((void *) (intptr_t) (texture_id),
+                 {static_cast<float>(texture.size().width), static_cast<float>(texture.size().height)},
+                 {0, 1},
+                 {1, 0});
     ImGui::End();
   }
 
@@ -216,6 +332,18 @@ public:
   SceneModel light_model;
   ponos::point3 light_position{5, 5, 5};
   ponos::vec3 light_color{300, 300, 300};
+  // env
+  bool view_env_map{false};
+  bool view_irradiance_map{false};
+  bool view_prefilter_map{false};
+  bool view_lut{false};
+  bool display_enviroment{false};
+  bool use_ibl{false};
+  SceneModel env_model;
+  circe::gl::Texture env_map, env_tex;
+  circe::gl::Texture irradiance_map, irradiance_tex;
+  circe::gl::Texture prefilter_map, prefilter_tex;
+  circe::gl::Texture lut;
 
 };
 

@@ -31,6 +31,7 @@ set(SOURCES brdf_explorer.cpp)
 add_executable(brdf_explorer ${SOURCES})
 target_compile_definitions(brdf_explorer PUBLIC
         -DSRC_PATH="${CMAKE_CURRENT_SOURCE_DIR}"
+        -DSHADER_CODE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/shader_code"
         )
 add_dependencies(brdf_explorer circe)
 target_include_directories(brdf_explorer PUBLIC ${PONOS_INCLUDES} ${CIRCE_INCLUDES} ${JSON11_INCLUDES})

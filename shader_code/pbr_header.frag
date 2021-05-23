@@ -14,9 +14,12 @@ uniform float roughness;
 uniform float ao;
 // fresnel reflectance at normal incidence
 uniform float f0;
-
+// glocal illumination
+uniform samplerCube irradianceMap;
+uniform samplerCube prefilterMap;
+uniform sampler2D brdfLUT;
 // lights
 uniform vec3 lightPosition;
 uniform vec3 lightColor;
-
+// constants
 const float PI = 3.14159265359;

@@ -9,6 +9,7 @@ void main() {
 
     // reflectance equation
     vec3 Lo = vec3(0.0);
+    // PER LIGHT CALCULATION //////////////////////////////////////////////////
 
     // calculate per-light radiance
     vec3 L = normalize(lightPosition - fPosition);
@@ -20,7 +21,7 @@ void main() {
     // Cook-Torrance BRDF
     float NDF = normalDistributionFunction(N, H, roughness);
     float G   = geometricShadowing(N, H, V, L, roughness);
-    vec3 F    = fresnel(V, H, F0);
+    vec3  F   = fresnel(V, H, F0);
 
     vec3 nominator    = NDF * G * F;
     float denominator = 4 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0);
@@ -43,7 +44,13 @@ void main() {
     // add to outgoing radiance Lo
     Lo += (kD * albedo / PI + specular) * radiance * NdotL;
 
+    ////////////////////////////////////////////////// PER LIGHT CALCULATION //
+
+    // GLOBAL ILLUMINATION ////////////////////////////////////////////////////
+
     vec3 ambient = vec3(0.03) * albedo * ao;
+
+    ////////////////////////////////////////////////// PER LIGHT CALCULATION //
 
     vec3 color = ambient + Lo;
 
